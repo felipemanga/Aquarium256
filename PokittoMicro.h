@@ -39,8 +39,13 @@ namespace PokittoMicro {
   void load8BitPalette( const unsigned short *pal );
   void setTransparentColor( unsigned char color );
   void setTileImage( unsigned char id, const unsigned char *tile );
+
+  typedef int (*TileProvider)( int x, int y );
+  void setTileProvider( TileProvider tp );
+  
   void blit( int x, int y, const unsigned char *sprite, BlitOp op );
   void update( UpdateFunc );
+  extern int cameraOffsetX, cameraOffsetY;
   
 }
 

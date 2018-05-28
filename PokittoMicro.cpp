@@ -10,6 +10,9 @@ void write_data_16(uint16_t data);
 static void lcdrefresh();
 
 const int MAX_SPRITES = 11;
+const int32_t MAP_WIDTH = 15;
+const int32_t MAP_HEIGHT = 12;
+const uint32_t MAP_SIZE = MAP_WIDTH*MAP_HEIGHT;
 
 static uint32_t *palette = reinterpret_cast<uint32_t *>(0x20000000);
 const unsigned char ** tiles = reinterpret_cast<const unsigned char **>(0x20000000+256*4);
@@ -17,8 +20,144 @@ const unsigned char ** tiles = reinterpret_cast<const unsigned char **>(0x200000
 namespace PokittoMicro {
 
   const uint8_t *cmds[220][MAX_SPRITES];
-  uint8_t map[15*12] = {0};
   uint8_t transparentColor;
+  
+  uint8_t map[MAP_SIZE];
+  int cameraOffsetX, cameraOffsetY;
+
+  TileProvider tileProvider;
+
+  struct MapWindow {
+    int32_t tx, ty;
+
+    void clear(){
+      
+      for( int y=0; y<MAP_HEIGHT; ++y )
+	for( int x=0; x<MAP_WIDTH; ++x )
+	  map[y*MAP_WIDTH+x] = tileProvider ? tileProvider(x+tx, y+ty) : 0;
+      
+    }
+    
+    MapWindow(){
+      tx = ty = 0;
+      clear();
+    }
+
+    void shift( int32_t x, int32_t y ){
+      if( x >= MAP_WIDTH || y >= MAP_HEIGHT || x <= -MAP_WIDTH || y <= -MAP_HEIGHT ){
+	clear();
+	return;
+      }
+
+      int32_t sy = 0, ey = MAP_HEIGHT, iy = 1, by = MAP_HEIGHT;
+      int32_t sx = 0, ex = MAP_WIDTH, ix = 1, bx = MAP_WIDTH;
+      if( y < 0 ){
+	iy = -1;
+	ey = -1;
+	sy = MAP_HEIGHT-1;
+	by = -1;
+      }
+      if( x < 0 ){
+	ix = -1;
+	ex = -1;
+	sx = MAP_WIDTH-1;
+	bx = -1;
+      }
+      ey -= y;
+      ex -= x;
+
+      int32_t y9 = y*MAP_WIDTH;
+  
+      for( int32_t cy=sy; cy!=ey; cy += iy ){
+	int32_t cy9 = cy * MAP_WIDTH;
+	for( int32_t cx=sx; cx!=ex; cx += ix )
+	  map[cy9+cx] = map[cy9+y9+cx+x];
+	for( int32_t cx=ex; cx!=bx; cx += ix )
+	  map[cy9+cx] = tileProvider ? tileProvider(tx+cx, ty+cy) : 0;
+      }
+	
+      for( int32_t cy=ey; cy!=by; cy += iy ){
+	int32_t cy9 = cy * MAP_WIDTH;
+	for( int32_t cx=sx; cx!=bx; cx += ix )
+	  map[cy9+cx] = tileProvider ? tileProvider(tx+cx, ty+cy) : 0;
+      }
+	
+    }
+
+    void tileToScreen( int32_t &x, int32_t &y ){
+      x = x - this->tx;
+      y = y - this->ty;
+      x <<= 4;
+      y <<= 4;
+      // x += this->x & 0xF;
+      // y += this->y & 0xF;
+    }
+
+    void render( ){
+      const uint8_t size = 16;
+
+      int32_t x = -cameraOffsetX;
+      int32_t y = -cameraOffsetY;
+	
+      int32_t xL = x & 0xF;
+      int32_t yL = y & 0xF;
+      int32_t xH = -x >> 4;
+      int32_t yH = -y >> 4;
+
+      xL -= size;
+      yL -= size;
+
+      int32_t xd = xH - this->tx;
+      int32_t yd = yH - this->ty;
+	
+      this->tx = xH;
+      this->ty = yH;
+
+      if( xd || yd )
+	shift( xd, yd );
+
+      /*
+      if( tileProvider ){
+
+	for( uint8_t ry=0; ry<MAP_HEIGHT; ++ry ){
+	  uint8_t ry9 = ry * MAP_WIDTH;
+	  
+	  for( uint8_t rx=0; rx<MAP_WIDTH; ++rx ){
+	    uint8_t i = ry9+rx;
+		
+	    if( map[i] == 0xFF )
+	      map[i] = tileProvider(rx+xH, yH+ry);
+	    
+	  }
+	  
+	}
+	
+      }else{
+
+
+	for( uint8_t ry=0; ry<MAP_HEIGHT; ++ry ){
+	  uint8_t ry9 = ry * MAP_WIDTH;
+	  // int8_t screenY = ry*size+yL+cameraOffsetY;
+	
+	  for( uint8_t rx=0; rx<MAP_WIDTH; ++rx ){
+	    uint8_t i = ry9+rx;
+		
+	    if( map[i] == 0xFF )
+	      map[i] = 0;
+	    
+	  }
+	  
+	}
+
+
+      }
+      */
+      
+    }
+    
+  } mapWindow;
+  
+  
 
   inline const uint8_t *packptr( const uint8_t *ptr, uint8_t data, uint8_t flags ){
  
@@ -89,6 +228,11 @@ namespace PokittoMicro {
     tiles[id] = tile;
   }
 
+  void setTileProvider( TileProvider tp ){
+    tileProvider = tp;
+    mapWindow.clear();
+  }
+
   uint32_t startTime;
   uint32_t frameEnd;
   uint32_t frameTime;
@@ -132,6 +276,8 @@ namespace PokittoMicro {
       wasInit = newFunc == func;
       func = newFunc;
 
+      mapWindow.render();
+
       lcdrefresh();
       
       clear();
@@ -153,6 +299,9 @@ namespace PokittoMicro {
   void blit( int y, int x, const unsigned char *sprite, BlitOp op ){
     int32_t w = *sprite++;
     int32_t h = *sprite++;
+
+    x -= cameraOffsetY;
+    y -= cameraOffsetX;
 
     if( y+h < 0 || y>=220 || x >= 176 || x+w < 0 )
       return;
@@ -281,7 +430,7 @@ static void lcdrefresh(){
     const uint8_t *ptr = nullptr;
     
     nextstride = flags & 1 ? -1 : 1;
-    
+
     for( int x=0; x<176; ){
       
       if( x>=tx ){
@@ -329,11 +478,17 @@ static void lcdrefresh(){
 	
       }else{
 
+	int32_t offsetX = PokittoMicro::cameraOffsetX&0xF;
+	int32_t offsetY = PokittoMicro::cameraOffsetY&0xF;
+
 	while( rep>0 ){
 
-	  int trep = min( rep, 16-(x&0xF) );
+	  int trep = min( rep, 16-((x+offsetY)&0xF) );
 
-	  const uint8_t *tile = tiles[ PokittoMicro::map[(x>>4)*15+(y>>4)] ] + (x&0xF) + (y&0xF)*16;
+	  const uint8_t *tile = tiles[ PokittoMicro::map[((x+offsetY)>>4)*15+((y+offsetX)>>4)] ];
+	  tile += ((y+offsetX)&0xF)*16;
+	  tile += ((x+offsetY)&0xF);
+	  
 	  x += trep;
 
 	  rep -= trep;

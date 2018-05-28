@@ -23,7 +23,14 @@ struct Fly {
   const uint8_t *sprite;
 } flies[ flyCount ];
 
+float f = 0;
+
 Update stateSplash( bool wasInit ){
+
+  f += 0.03f;
+
+  cameraOffsetX = cos(f) * 200;
+  cameraOffsetY = sin(f) * 50;
 
   for( int i=0; i<flyCount; ++i ){
     auto &fly = flies[i];
@@ -33,7 +40,7 @@ Update stateSplash( bool wasInit ){
 
     int d = (fly.x - 110) * (fly.x - 110) + (fly.y - 88) * (fly.y - 88);
 
-    if( d > 800 ){
+    if( d > 10000 ){
     
       if( fly.x < 110 ) fly.sx+=0.1;
       else if( fly.x > 110 ) fly.sx-=0.1;
@@ -70,11 +77,21 @@ int main () {
   setTileImage( 4, fish5_tile8 );
   setTileImage( 5, fish13_tile8 );
 
+  /* * /
+
   for( int y=0; y<12; ++y ){
     for( int x=0; x<15; ++x ){
       map[y*15+x] = y < 7 ? 5 : ( y > 7 ? ( (noise(seed*(x*47+y*16))&0xFF)>200?3+(x&1):0) : ( 1+(x&1) ) );
     }
   }
+
+  /*/
+
+  setTileProvider( []( int x, int y )->int{
+      return y < 7 ? 5 : ( y > 7 ? ( (noise(seed*(x*47+y*16))&0xFF)>200?3+(x&1):0) : ( 1+(x&1) ) );
+    });
+
+  /* */
 
   setTransparentColor( 0 );
 

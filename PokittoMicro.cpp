@@ -282,16 +282,6 @@ namespace PokittoMicro {
       
       clear();
 
-      frameCount++;
-      if( frameCount == 100 ){
-	frameCount = 0;
-	sprintf( timeText, "%u", static_cast<unsigned int>(100000/(now - startTime)) );
-	startTime = Core::getTime();
-      }
-
-      Display::setCursor( 0, 0 );
-      Display::print(timeText);
-
     }
 
   }
@@ -410,9 +400,28 @@ namespace PokittoMicro {
   
 
 static void lcdrefresh(){
+  int y = 0;
+
+  PokittoMicro::frameCount++;
+
+#ifdef PROJ_SHOW_FPS_COUNTER
   
+  if( PokittoMicro::frameCount == 100 ){
+    char timeText[10] = {0};
+    uint32_t now = Core::getTime();
+    PokittoMicro::frameCount = 0;
+    sprintf( timeText, "%u", static_cast<unsigned int>(100000/(now - PokittoMicro::startTime)) );
+    PokittoMicro::startTime = now;
+    Display::directtextrotated = true;
+    Display::setCursor( 0, 0 );
+    Display::print(timeText);
+  }
+
+  y=8;
+#endif
+
   write_command(0x20); write_data(0);
-  write_command(0x21); write_data(0);
+  write_command(0x21); write_data(y);
   write_command(0x22); // write data to DRAM
   CLR_CS_SET_CD_RD_WR;
 
@@ -420,7 +429,7 @@ static void lcdrefresh(){
       
   int stride=1, nextstride;
 
-  for( int y=0; y<220; ++y ){
+  for(; y<220; ++y ){
     
     int c=0;
     const uint8_t *nextptr;
